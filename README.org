@@ -1,0 +1,35 @@
+* Interacting with Idris from Racket
+
+This is the start of a library for interacting with Idris in graphical
+Racket applications. It uses Idris's [[http://docs.idris-lang.org/en/latest/reference/ide-protocol.html][IDE protocol]] to communicate with
+the compiler, just like =idris-mode= for Emacs and the Atom plugin do.
+
+My main motivation is to have something better than Emacs for doing
+slide shows with compiler interaction.
+
+** Current features
+ - Start an Idris process and communicate over a socket
+ - Parsing and unparsing Idris messages
+ - Demo REPL app
+
+** Planned
+ - Proper translation between Idris error results and Racket
+   exceptions
+ - Graphical classes (snips) for Idris's semantic highlighting
+ - Interaction with =slideshow=
+ - Interactive editing features like those in =idris-mode=
+
+** Not planned, but patches welcome
+ - =#lang idris= in DrRacket
+ - Full-featured editor support, with doc lookup, etc.
+ - Compiling and running Idris programs from Racket
+ - Interactive prover/elaborator support
+
+** How to test
+First, if Idris isn't on your PATH, then edit the invocation of
+=subprocess= to point at its absolute path. Then, load up the file in
+=racket-mode= or DrRacket and evaluate =(repl)= to get a bare-bones
+graphical Idris REPL.
+
+#+CAPTION The sample Idris REPL
+[[idris-repl.png]]

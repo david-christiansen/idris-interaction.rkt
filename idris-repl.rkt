@@ -1,8 +1,8 @@
 #lang racket
-(require "idris-interaction.rkt")
+(require "has-idris.rkt")
 (require racket/gui)
 
-(provide repl)
+(provide repl idris-repl-text%)
 
 ;;;; Graphical REPL as demo/test for interactions
 
@@ -151,9 +151,11 @@
            (highlight-from insertion-base highlights)
            (set! locked? was-locked?)))))))
 
+
 (define idris-repl-frame%
-  (class frame%
-    (field (my-idris-thread #f))
+  (class (has-idris-mixin frame%)
+
+    (inherit start-my-idris idris-send)
 
     (super-new [label "Idris"] [width 700] [height 1000])
 
@@ -163,7 +165,7 @@
            [parent panel]
            [label "Start Idris"]
            [callback (lambda (x y)
-                       (set! my-idris-thread (idris-thread))
+                       (start-my-idris)
                        (send start-idris enable #f)
                        (send output-editor insert-prompt))]))
 
@@ -171,27 +173,28 @@
       (new idris-repl-text%
            [eval-callback
             (lambda (cmd)
-              (thread-send my-idris-thread
-                           `(send (:interpret ,cmd)
-                                  ,(lambda (res [highlights empty])
-                                     (send output-editor output res highlights)
-                                     (send output-editor output "\n")
-                                     ;; this is the success cont, so we can insert
-                                     ;; a prompt here
-                                     (send output-editor insert-prompt))
-                                  ,(lambda (res [highlights empty])
-                                     (match res
-                                       [(list ':highlight-source highlighting)
-                                        (send output-editor highlight-repl-input
-                                              highlighting)]
-                                       [other void]))
-                                  ,(lambda (res [highlights empty])
-                                     (send output-editor output res highlights)
-                                     (send output-editor output "\n")
-                                     ;; this is the error cont, so we
-                                     ;; should also give a prompt
-                                     (send output-editor insert-prompt)
-                                     ))))]))
+              (idris-send `(:interpret ,cmd)
+                          #:on-success
+                          (lambda (res [highlights empty])
+                            (send output-editor output res highlights)
+                            (send output-editor output "\n")
+                            ;; this is the success cont, so we can insert
+                            ;; a prompt here
+                            (send output-editor insert-prompt))
+                          #:on-output
+                          (lambda (res [highlights empty])
+                            (match res
+                              [(list ':highlight-source highlighting)
+                               (send output-editor highlight-repl-input
+                                     highlighting)]
+                              [other void]))
+                          #:on-error
+                          (lambda (res [highlights empty])
+                            (send output-editor output res highlights)
+                            (send output-editor output "\n")
+                            ;; this is the error cont, so we
+                            ;; should also give a prompt
+                            (send output-editor insert-prompt))))]))
     (define output (new editor-canvas% [parent panel] [editor output-editor]))))
 
 

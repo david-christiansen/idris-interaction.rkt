@@ -31,5 +31,5 @@ First, if Idris isn't on your PATH, then edit the invocation of
 =racket-mode= or DrRacket and evaluate =(repl)= to get a bare-bones
 graphical Idris REPL.
 
-#+CAPTION The sample Idris REPL
+
 [[idris-repl.png]]

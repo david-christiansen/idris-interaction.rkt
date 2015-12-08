@@ -129,25 +129,27 @@
                          error-continuations)])
          (hash-remove! cont request-id)))
 
+     (define (call-handler handler msg highlights)
+       (when handler
+         (if (cons? highlights)
+             (handler msg (car highlights))
+             (handler msg))))
+
      (define (update)
        (match (idris-receive idris)
          [(list ':return (list-rest ':ok msg highlights) request-id)
-          (let ((continuation (hash-ref success-continuations request-id #f)))
-            (when continuation (continuation msg)))
+          (call-handler (hash-ref success-continuations request-id #f) msg highlights)
           (done-with-request-id request-id)
           (update)]
          [(list ':return (list-rest ':error msg highlights) request-id)
-          (let ((continuation (hash-ref error-continuations request-id #f)))
-            (when continuation (continuation msg)))
+          (call-handler (hash-ref error-continuations request-id #f) msg highlights)
           (done-with-request-id request-id)
           (update)]
          [(list ':output (list-rest ':ok msg highlights) request-id)
-          (let ((continuation (hash-ref progress-continuations request-id #f)))
-            (when continuation (continuation msg)))
+          (call-handler (hash-ref progress-continuations request-id #f) msg highlights)
           (update)]
          [(list ':output (list-rest ':error msg highlights) request-id)
-          (let ((continuation (hash-ref error-continuations request-id #f)))
-            (when continuation (continuation msg)))
+          (call-handler (hash-ref error-continuations request-id #f) msg highlights)
           (update)]
          [(list ':write-string str)
           (displayln str)
@@ -184,6 +186,11 @@
                 (go)])
              (begin (update) (go))))))))
 
+
+;;;; Graphical REPL as demo/test for interactions
+
+
+
 (define idris-eventspace (current-eventspace))
 
 (define (queue-idris-output proc)
@@ -197,7 +204,62 @@
 (define idris-repl-text%
   (class text%
     (init-field eval-callback)
-    (inherit insert last-position get-text)
+    (inherit insert last-position get-text get-style-list change-style set-position)
+
+    (super-new)
+
+    (define my-style-list (get-style-list))
+
+    (define idris-prompt-style
+      (send my-style-list new-named-style
+            "Idris prompt" (send my-style-list basic-style)))
+
+    (send idris-prompt-style set-delta
+          (make-object style-delta% 'change-bold))
+
+    (define idris-input-style
+      (send my-style-list new-named-style
+            "Idris REPL input" (send my-style-list basic-style)))
+
+    (send idris-input-style set-delta
+          (make-object style-delta% 'change-normal))
+
+    (define idris-semantic-highlight-style
+      (send my-style-list new-named-style
+            "Idris semantic highlight" (send my-style-list basic-style)))
+    (define idris-semantic-function-highlight-style
+      (send my-style-list new-named-style
+            "Idris semantic function highlight" idris-semantic-highlight-style))
+    (define idris-semantic-type-highlight-style
+      (send my-style-list new-named-style
+            "Idris semantic type highlight" idris-semantic-highlight-style))
+    (define idris-semantic-data-highlight-style
+      (send my-style-list new-named-style
+            "Idris semantic data highlight" idris-semantic-highlight-style))
+
+    (send idris-semantic-function-highlight-style set-delta
+          (let ((delta (make-object style-delta% 'change-nothing)))
+            (send delta set-delta-foreground (make-object color% 0 128 0 1.0))
+            delta))
+
+    (send idris-semantic-type-highlight-style set-delta
+          (let ((delta (make-object style-delta% 'change-nothing)))
+            (send delta set-delta-foreground (make-object color% 0 0 128 1.0))
+            delta))
+
+    (send idris-semantic-data-highlight-style set-delta
+          (let ((delta (make-object style-delta% 'change-nothing)))
+            (send delta set-delta-foreground (make-object color% 200 0 0 1.0))
+            delta))
+
+
+    ;; Map an Idris decor keyword to a style
+    (define (idris-get-decor-style decor)
+      (match decor
+        [':type     idris-semantic-type-highlight-style]
+        [':function idris-semantic-function-highlight-style]
+        [':data     idris-semantic-data-highlight-style]
+        [other      #f]))
 
     (define input-beginning-position 0)
     (define current-prompt "")
@@ -211,33 +273,54 @@
            (not locked?)))
 
     (define/override (on-char c)
-      (super on-char c)
-      (when (and (eq? (send c get-key-code)
-                      #\return)
-                 (not locked?))
-        (set! locked? #t)
-        (eval-callback
-         (get-text input-beginning-position
-                   (- (last-position) 1)))))
+      (if (and (eq? (send c get-key-code)
+                    #\return)
+               (not locked?))
+          (begin
+            (set-position (last-position))
+            (super on-char c)
+            (set! locked? #t)
+            (eval-callback
+             (get-text input-beginning-position
+                       (- (last-position) 1))))
+          (super on-char c)))
 
     (define/public (insert-prompt)
       (queue-idris-output
        (λ ()
          (set! locked? #f)
+         (change-style idris-prompt-style)
          (insert current-prompt)
-         (insert "> ")
+         (insert ">")
+         (change-style idris-input-style)
+         (insert " ")
          (set! input-beginning-position (last-position)))))
 
-    (define/public (output str)
+    (define (highlight-from base-pos highlights)
+      (for ([hl highlights])
+        (match hl
+          [(list start len info)
+           (let ([decor (assoc ':decor info)])
+             (when decor
+               (let ([style (idris-get-decor-style (cadr decor))])
+                 (when style
+                   (change-style style
+                                 (+ base-pos start)
+                                 (+ base-pos start len)
+                                 #f)))))]
+          [other void])))
+
+    (define/public (output str [highlights empty])
       (queue-idris-output
        (lambda ()
-         (let ((was-locked? locked?))
+         (let ((was-locked? locked?)
+               (insertion-base (last-position)))
            (set! locked? #f)
            (insert str)
-           (set! locked? was-locked?)))))
-    (super-new)))
+           (highlight-from insertion-base highlights)
+           (set! locked? was-locked?)))))))
 
-(define idris-repl%
+(define idris-repl-frame%
   (class frame%
     (field (my-idris-thread #f))
 
@@ -258,15 +341,15 @@
             (lambda (cmd)
               (thread-send my-idris-thread
                            `(send (:interpret ,cmd)
-                                  ,(lambda (res)
-                                     (send output-editor output res)
+                                  ,(lambda (res [highlights empty])
+                                     (send output-editor output res highlights)
                                      (send output-editor output "\n")
                                      ;; this is the success cont, so we can insert
                                      ;; a prompt here
                                      (send output-editor insert-prompt))
                                   ,void
-                                  ,(lambda (res)
-                                     (send output-editor output res)
+                                  ,(lambda (res [highlights empty])
+                                     (send output-editor output res highlights)
                                      (send output-editor output "\n")
                                      ;; this is the error cont, so we
                                      ;; should also give a prompt
@@ -276,6 +359,6 @@
 
 
 (define (repl)
-  (define frame (new idris-repl%))
+  (define frame (new idris-repl-frame%))
   (send frame show #t))
 

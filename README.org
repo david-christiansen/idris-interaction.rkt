@@ -10,12 +10,11 @@ slide shows with compiler interaction.
 ** Current features
  - Start an Idris process and communicate over a socket
  - Parsing and unparsing Idris messages
- - Demo REPL app
+ - Demo REPL app, including semantic highlights of output
 
 ** Planned
  - Proper translation between Idris error results and Racket
    exceptions
- - Graphical classes (snips) for Idris's semantic highlighting
  - Interaction with =slideshow=
  - Interactive editing features like those in =idris-mode=
 

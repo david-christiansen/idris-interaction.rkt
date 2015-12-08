@@ -22,8 +22,13 @@
     (for ([p ports])
       (file-stream-buffer-mode p 'none)))
 
+  (define idris-executable
+    (if (eq? (system-type 'os) 'windows)
+          "idris.exe"
+          "idris"))
+  
   (let-values (((proc out in err)
-                (subprocess #f #f #f (find-executable-path "idris") "--ide-mode-socket")))
+                (subprocess #f #f #f (find-executable-path idris-executable) "--ide-mode-socket")))
 
     (unless (equal? (subprocess-status proc) 'running)
       (close-ports in out err)

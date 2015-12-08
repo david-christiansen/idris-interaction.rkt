@@ -76,6 +76,7 @@
         [':data     idris-semantic-data-highlight-style]
         [other      #f]))
 
+    (define previous-input-beginning-position 0)
     (define input-beginning-position 0)
     (define current-prompt "")
     (define locked? #t)
@@ -95,6 +96,7 @@
             (set-position (last-position))
             (super on-char c)
             (set! locked? #t)
+            (set! previous-input-beginning-position input-beginning-position)
             (eval-callback
              (get-text input-beginning-position
                        (- (last-position) 1))))
@@ -123,6 +125,20 @@
                                  (+ base-pos start)
                                  (+ base-pos start len)
                                  #f)))))]
+          [other void])))
+
+    (define/public (highlight-repl-input highlights)
+      (for ([hl highlights])
+        (match hl
+          [(list (list-no-order (list ':filename "(input)")
+                                (list ':start 1 s-col)
+                                (list ':end 1 e-col))
+                 (list-no-order (list ':decor decor) rest ...))
+           #:when (> e-col s-col)
+           (highlight-from previous-input-beginning-position
+                           (list (list (- s-col 1)
+                                       (- e-col s-col)
+                                       `((:decor ,decor)))))]
           [other void])))
 
     (define/public (output str [highlights empty])
@@ -164,7 +180,11 @@
                                      ;; a prompt here
                                      (send output-editor insert-prompt))
                                   ,(lambda (res [highlights empty])
-                                     void)
+                                     (match res
+                                       [(list ':highlight-source highlighting)
+                                        (send output-editor highlight-repl-input
+                                              highlighting)]
+                                       [other void]))
                                   ,(lambda (res [highlights empty])
                                      (send output-editor output res highlights)
                                      (send output-editor output "\n")

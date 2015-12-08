@@ -10,7 +10,7 @@ slide shows with compiler interaction.
 ** Current features
  - Start an Idris process and communicate over a socket
  - Parsing and unparsing Idris messages
- - Demo REPL app, including semantic highlights of output
+ - Demo REPL app, including semantic highlights
 
 ** Planned
  - Proper translation between Idris error results and Racket

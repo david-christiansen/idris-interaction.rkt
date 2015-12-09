@@ -11,6 +11,7 @@ slide shows with compiler interaction.
  - Start an Idris process and communicate over a socket
  - Parsing and unparsing Idris messages
  - Demo REPL app, including semantic highlights
+ - Demo editor app, including file editor and REPL
 
 ** Planned
  - Proper translation between Idris error results and Racket

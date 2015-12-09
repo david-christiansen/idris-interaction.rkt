@@ -135,39 +135,44 @@
                          error-continuations)])
          (hash-remove! cont request-id)))
 
-     (define (call-handler handler msg highlights)
+     (define (call-handler handler msg [highlights empty])
        (when handler
          (if (cons? highlights)
              (handler msg (car highlights))
              (handler msg))))
 
      (define (update)
-       (match (idris-receive idris)
-         [(list ':return (list-rest ':ok msg highlights) request-id)
-          (call-handler (hash-ref success-continuations request-id #f) msg highlights)
-          (done-with-request-id request-id)
-          (update)]
-         [(list ':return (list-rest ':error msg highlights) request-id)
-          (call-handler (hash-ref error-continuations request-id #f) msg highlights)
-          (done-with-request-id request-id)
-          (update)]
-         [(list ':output (list-rest ':ok msg highlights) request-id)
-          (call-handler (hash-ref progress-continuations request-id #f) msg highlights)
-          (update)]
-         [(list ':output (list-rest ':error msg highlights) request-id)
-          (call-handler (hash-ref error-continuations request-id #f) msg highlights)
-          (update)]
-         [(list ':write-string str)
-          (displayln str)
-          (update)]
-         [(list ':set-prompt new-prompt)
-          (printf "New prompt: ~a\n" new-prompt)
-          (update)]
-         [(list ':warning warning)
-          (printf "Warning: ~a\n" warning)
-          (update)]
-         [#f void]
-         [other (printf "Didn't understand Idris message ~a" other)]))
+       (let ([reply (idris-receive idris)])
+         (when reply (displayln (format "Receiving ~a" reply)))
+         (match reply
+             [(list ':return (list-rest ':ok msg highlights) request-id)
+              (call-handler (hash-ref success-continuations request-id #f) msg highlights)
+              (done-with-request-id request-id)
+              (update)]
+             [(list ':return (list-rest ':error msg highlights) request-id)
+              (call-handler (hash-ref error-continuations request-id #f) msg highlights)
+              (done-with-request-id request-id)
+              (update)]
+             [(list ':output (list-rest ':ok msg highlights) request-id)
+              (call-handler (hash-ref progress-continuations request-id #f) msg highlights)
+              (update)]
+             [(list ':output (list-rest ':error msg highlights) request-id)
+              (call-handler (hash-ref error-continuations request-id #f) msg highlights)
+              (update)]
+             [(list ':write-string str request-id)
+              (call-handler (hash-ref progress-continuations request-id #f)
+                            reply)
+              (update)]
+             [(list ':set-prompt new-prompt request-id)
+              (call-handler (hash-ref progress-continuations request-id #f)
+                            reply)
+              (update)]
+             [(list ':warning warning request-id)
+              (call-handler (hash-ref progress-continuations request-id #f)
+                            reply)
+              (update)]
+             [#f void]
+             [other (printf "Didn't understand Idris message ~a" other)])))
 
      (let go ()
        (let* ((thread-event (thread-receive-evt))
@@ -188,8 +193,10 @@
                     (hash-set! progress-continuations request-id (car conts))
                     (when (cons? (cdr conts))
                       (hash-set! error-continuations request-id (cadr conts))))
+                  (displayln (format "Sending ~s" sexp))
                   (idris-send idris (list sexp request-id)))
                 (go)])
-             (begin (update) (go))))))))
+             (begin (update)
+                    (go))))))))
 
 

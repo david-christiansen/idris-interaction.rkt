@@ -143,7 +143,7 @@
 
      (define (update)
        (let ([reply (idris-receive idris)])
-         (when reply (displayln (format "Receiving ~a" reply)))
+         ;(when reply (displayln (format "Receiving ~a" reply)))
          (match reply
              [(list ':return (list-rest ':ok msg highlights) request-id)
               (call-handler (hash-ref success-continuations request-id #f) msg highlights)
@@ -193,7 +193,7 @@
                     (hash-set! progress-continuations request-id (car conts))
                     (when (cons? (cdr conts))
                       (hash-set! error-continuations request-id (cadr conts))))
-                  (displayln (format "Sending ~s" sexp))
+                  #;(displayln (format "Sending ~s" sexp))
                   (idris-send idris (list sexp request-id)))
                 (go)])
              (begin (update)

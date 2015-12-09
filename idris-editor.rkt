@@ -1,7 +1,10 @@
 #lang racket
 (require "has-idris.rkt")
+(require "idris-tag.rkt")
 (require "idris-repl-text.rkt")
+(require "idris-highlighting-text.rkt")
 (require racket/gui)
+(require framework)
 
 (define idris-editor-frame%
   (class (has-idris-mixin frame%)
@@ -79,6 +82,29 @@
                        (send run enable #t)
                        (send repl-editor insert-prompt))]))
 
+    (define (highlight-code highlights)
+      (for ([hl highlights])
+        (match hl
+          [(list (list-no-order (list ':filename filename)
+                                (list ':start s-line s-col)
+                                (list ':end e-line e-col))
+                 (list-no-order (list ':decor decor) rest ...))
+           ;; Filter out spurious highlights
+           #:when (string-suffix? (path->string editor-file-name) filename)
+           (let* ([start-line-start-pos (send code-editor line-start-position
+                                              (- s-line 1))]
+                  [start-pos (+ start-line-start-pos s-col -1)]
+                  [end-line-start-pos (send code-editor line-start-position
+                                              (- e-line 1))]
+                  [end-pos (+ end-line-start-pos e-col -1)])
+             ;; filter more garbage
+             (when (< start-pos end-pos)
+               (send code-editor add-idris-highlight
+                     start-pos end-pos
+                     (idris-tag-from-protocol (cons (list ':decor decor) rest)))))]
+          [other void])))
+
+
     (define (run-in-idris)
       (if (not editor-file-name)
           (message-box "Can't run unsaved program"
@@ -87,11 +113,12 @@
                        '(ok caution))
           (begin
             (when (send code-editor is-modified?)
-              (when (equal? (message-box "Unsaved code"
-                                         "Idris will see the last saved version of your code.\n\nSave before running?"
-                                         this
-                                         '(yes-no))
-                            'yes)
+              (when (equal?
+                     (message-box "Unsaved code"
+                                  "Idris will see the last saved version of your code.\n\nSave before running?"
+                                  this
+                                  '(yes-no))
+                     'yes)
                 (save-file)))
             (let-values ([(base name must-be-dir)
                           (split-path editor-file-name)])
@@ -108,6 +135,8 @@
                                (send repl-editor set-prompt str)]
                               [(list ':write-string str _)
                                (send repl-editor output str)]
+                              [(list ':highlight-source hls)
+                               (highlight-code hls)]
                               [other void]))
                           #:on-error
                           (lambda (msg [highlighting empty])
@@ -123,8 +152,9 @@
            [enabled #f]
            [callback (lambda args (run-in-idris))]))
 
-    (define horizontal (new horizontal-panel% [parent vertical]))
-    (define code-editor (new text%))
+    (define horizontal (new panel:horizontal-dragable%
+                            [parent vertical]))
+    (define code-editor (new idris-highlighting-text%))
     (define repl-editor (new idris-repl-text%
                              [eval-callback
                               (lambda (cmd)
@@ -155,5 +185,6 @@
     (define repl-editor-canvas (new editor-canvas% [parent horizontal] [editor repl-editor]))))
 
 (define (editor)
-  (define frame (new idris-editor-frame%))
-  (send frame show #t))
+  (parameterize ([application:current-app-name "Idris Editor"])
+    (define frame (new idris-editor-frame%))
+    (send frame show #t)))

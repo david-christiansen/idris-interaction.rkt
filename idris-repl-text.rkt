@@ -1,8 +1,9 @@
 #lang racket
 
 (require racket/gui)
+(require "idris-highlighting-text.rkt")
+(require "idris-tag.rkt")
 (provide idris-eventspace queue-idris-output idris-repl-text%)
-
 
 (define idris-eventspace (current-eventspace))
 
@@ -15,20 +16,22 @@
 ;; support snips that represent the Idris notion of semantic
 ;; highlighting, and it will then need to depart massively!
 (define idris-repl-text%
-  (class text%
+  (class idris-highlighting-text%
     (init-field eval-callback)
-    (inherit insert last-position get-text get-style-list change-style set-position)
+    (init [line-spacing 1.0]
+          [tab-stops null]
+          [auto-wrap #f]
+          [tag-menu-callback #f])
 
-    (super-new)
+    (inherit insert last-position get-text get-style-list change-style set-position
+             get-idris-decor-style add-idris-highlight)
+
+    (super-new [line-spacing line-spacing]
+               [tab-stops tab-stops]
+               [auto-wrap auto-wrap]
+               [tag-menu-callback tag-menu-callback])
 
     (define my-style-list (get-style-list))
-
-    (define idris-prompt-style
-      (send my-style-list new-named-style
-            "Idris prompt" (send my-style-list basic-style)))
-
-    (send idris-prompt-style set-delta
-          (make-object style-delta% 'change-bold))
 
     (define idris-input-style
       (send my-style-list new-named-style
@@ -37,42 +40,13 @@
     (send idris-input-style set-delta
           (make-object style-delta% 'change-normal))
 
-    (define idris-semantic-highlight-style
+
+    (define idris-prompt-style
       (send my-style-list new-named-style
-            "Idris semantic highlight" (send my-style-list basic-style)))
-    (define idris-semantic-function-highlight-style
-      (send my-style-list new-named-style
-            "Idris semantic function highlight" idris-semantic-highlight-style))
-    (define idris-semantic-type-highlight-style
-      (send my-style-list new-named-style
-            "Idris semantic type highlight" idris-semantic-highlight-style))
-    (define idris-semantic-data-highlight-style
-      (send my-style-list new-named-style
-            "Idris semantic data highlight" idris-semantic-highlight-style))
+            "Idris prompt" (send my-style-list basic-style)))
 
-    (send idris-semantic-function-highlight-style set-delta
-          (let ((delta (make-object style-delta% 'change-nothing)))
-            (send delta set-delta-foreground (make-object color% 0 128 0 1.0))
-            delta))
-
-    (send idris-semantic-type-highlight-style set-delta
-          (let ((delta (make-object style-delta% 'change-nothing)))
-            (send delta set-delta-foreground (make-object color% 0 0 128 1.0))
-            delta))
-
-    (send idris-semantic-data-highlight-style set-delta
-          (let ((delta (make-object style-delta% 'change-nothing)))
-            (send delta set-delta-foreground (make-object color% 200 0 0 1.0))
-            delta))
-
-
-    ;; Map an Idris decor keyword to a style
-    (define (idris-get-decor-style decor)
-      (match decor
-        [':type     idris-semantic-type-highlight-style]
-        [':function idris-semantic-function-highlight-style]
-        [':data     idris-semantic-data-highlight-style]
-        [other      #f]))
+    (send idris-prompt-style set-delta
+          (make-object style-delta% 'change-bold))
 
     (define previous-input-beginning-position 0)
     (define input-beginning-position 0)
@@ -120,14 +94,11 @@
       (for ([hl highlights])
         (match hl
           [(list start len info)
-           (let ([decor (assoc ':decor info)])
-             (when decor
-               (let ([style (idris-get-decor-style (cadr decor))])
-                 (when style
-                   (change-style style
-                                 (+ base-pos start)
-                                 (+ base-pos start len)
-                                 #f)))))]
+           (let ([tag (idris-tag-from-protocol info)])
+             (when tag
+               (add-idris-highlight (+ base-pos start)
+                                    (+ base-pos start len)
+                                    tag)))]
           [other void])))
 
     (define/public (highlight-repl-input highlights)

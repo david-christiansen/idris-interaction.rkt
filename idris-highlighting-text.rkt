@@ -30,7 +30,7 @@
                [tab-stops tab-stops]
                [auto-wrap auto-wrap])
 
-    (inherit get-style-list change-style find-position)
+    (inherit get-active-canvas get-style-list change-style find-position)
 
 
     (define my-style-list (get-style-list))
@@ -116,6 +116,9 @@
                  [y (send mouse-event get-y)]
                  [click-position (find-position x y)]
                  [maybe-tag (interval-map-ref highlights click-position #f)])
-            #;(displayln (format "hejsan ~a ~a" click-position maybe-tag))
-            void)
+            (when (and tag-menu-callback maybe-tag)
+              (let ([menu (tag-menu-callback maybe-tag)]
+                    [canvas (get-active-canvas)])
+                (when (and menu canvas)
+                  (send canvas popup-menu menu x y)))))
           (super on-default-event mouse-event)))))

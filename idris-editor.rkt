@@ -1,16 +1,19 @@
 #lang racket
 (require "has-idris.rkt")
 (require "idris-tag.rkt")
+(require "idris-tag-details.rkt")
 (require "idris-repl-text.rkt")
 (require "idris-highlighting-text.rkt")
 (require racket/gui)
 (require framework)
+
 
 (define idris-editor-frame%
   (class (has-idris-mixin frame%)
     (inherit start-my-idris idris-send
              get-idris-working-directory set-idris-working-directory
              set-label)
+
     (super-new [label "Idris editor"] [width 1000] [height 700])
 
     (define editor-file-name #f)
@@ -70,6 +73,7 @@
                          [label "Save as..."]
                          [callback (lambda args (save-file-as))]))
 
+
     (define vertical (new vertical-panel% [parent this]))
     (define toolbar (new horizontal-panel% [parent vertical] [stretchable-height #f]))
     (define start-idris
@@ -95,7 +99,7 @@
                                               (- s-line 1))]
                   [start-pos (+ start-line-start-pos s-col -1)]
                   [end-line-start-pos (send code-editor line-start-position
-                                              (- e-line 1))]
+                                            (- e-line 1))]
                   [end-pos (+ end-line-start-pos e-col -1)])
              ;; filter more garbage
              (when (< start-pos end-pos)
@@ -152,37 +156,56 @@
            [enabled #f]
            [callback (lambda args (run-in-idris))]))
 
-    (define horizontal (new panel:horizontal-dragable%
-                            [parent vertical]))
-    (define code-editor (new idris-highlighting-text%))
-    (define repl-editor (new idris-repl-text%
-                             [eval-callback
-                              (lambda (cmd)
-                                (idris-send `(:interpret ,cmd)
-                                            #:on-success
-                                            (lambda (res [highlights empty])
-                                              (send repl-editor output res highlights)
-                                              (send repl-editor output "\n")
-                                              ;; this is the success cont, so we can insert
-                                              ;; a prompt here
-                                              (send repl-editor insert-prompt))
-                                            #:on-output
-                                            (lambda (res [highlights empty])
-                                              (match res
-                                                [(list ':highlight-source highlighting)
-                                                 (send repl-editor highlight-repl-input
-                                                       highlighting)]
-                                                [other void]))
-                                            #:on-error
-                                            (lambda (res [highlights empty])
-                                              (send repl-editor output res highlights)
-                                              (send repl-editor output "\n")
-                                              ;; this is the error cont, so we
-                                              ;; should also give a prompt
-                                              (send repl-editor insert-prompt))))]))
+    (define (tag-popup tag)
+      (if (idris-tag? tag)
+          (let ([the-menu
+                 (new popup-menu%
+                      [title (and (idris-tag? tag)
+                                  (idris-tag-full-name tag))])])
+            (new menu-item%
+                 [label "Info"]
+                 [parent the-menu]
+                 [callback (lambda args (send info-widget set-tag tag))])
+            the-menu)
+          #f))
+
+    (define horizontal
+      (new panel:horizontal-dragable%
+           [parent vertical]))
+    (define code-editor
+      (new idris-highlighting-text% [tag-menu-callback tag-popup]))
+    (define repl-editor
+      (new idris-repl-text%
+           [tag-menu-callback tag-popup]
+           [eval-callback
+            (lambda (cmd)
+              (idris-send `(:interpret ,cmd)
+                          #:on-success
+                          (lambda (res [highlights empty])
+                            (send repl-editor output res highlights)
+                            (send repl-editor output "\n")
+                            ;; this is the success cont, so we can insert
+                            ;; a prompt here
+                            (send repl-editor insert-prompt))
+                          #:on-output
+                          (lambda (res [highlights empty])
+                            (match res
+                              [(list ':highlight-source highlighting)
+                               (send repl-editor highlight-repl-input
+                                     highlighting)]
+                              [other void]))
+                          #:on-error
+                          (lambda (res [highlights empty])
+                            (send repl-editor output res highlights)
+                            (send repl-editor output "\n")
+                            ;; this is the error cont, so we
+                            ;; should also give a prompt
+                            (send repl-editor insert-prompt))))]))
 
     (define text-editor-canvas (new editor-canvas% [parent horizontal] [editor code-editor]))
-    (define repl-editor-canvas (new editor-canvas% [parent horizontal] [editor repl-editor]))))
+    (define right-panel (new vertical-panel% [parent horizontal]))
+    (define repl-editor-canvas (new editor-canvas% [parent right-panel] [editor repl-editor]))
+    (define info-widget (new idris-tag-details-widget% [parent right-panel] [tag #f]))))
 
 (define (editor)
   (parameterize ([application:current-app-name "Idris Editor"])

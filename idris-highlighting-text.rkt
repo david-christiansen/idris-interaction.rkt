@@ -17,7 +17,12 @@
     [add-idris-highlight (->m exact-nonnegative-integer?
                               exact-nonnegative-integer?
                               idris-tag?
-                              void?)]))
+                              void?)]
+
+    [remove-highlighting (->m void?)]
+
+    [tag-at-position (->m exact-nonnegative-integer?
+                          (or/c idris-tag? #f))]))
 
 (define idris-highlighting-text%
   (class* text% (idris-highlighting-editor<%>)
@@ -30,57 +35,46 @@
                [tab-stops tab-stops]
                [auto-wrap auto-wrap])
 
-    (inherit get-active-canvas get-style-list change-style find-position)
+    (inherit change-style
+             find-position
+             get-active-canvas
+             get-style-list
+             last-position)
 
 
     (define my-style-list (get-style-list))
 
     (define basic-style (send my-style-list basic-style))
     (send basic-style set-delta
-          (make-object style-delta% 'change-family 'modern))
+          (make-object style-delta% 'change-family 'swiss))
     (send my-style-list replace-named-style "Standard" basic-style)
 
-    (define idris-semantic-highlight-style
-      (send my-style-list new-named-style
-            "Idris semantic highlight" basic-style))
+
     (define idris-semantic-function-highlight-style
-      (send my-style-list new-named-style
-            "Idris semantic function highlight" idris-semantic-highlight-style))
+      (let ((delta (make-object style-delta% 'change-nothing)))
+        (send delta set-delta-foreground (make-object color% 0 128 0 1.0))
+        delta))
+
     (define idris-semantic-type-highlight-style
-      (send my-style-list new-named-style
-            "Idris semantic type highlight" idris-semantic-highlight-style))
+      (let ((delta (make-object style-delta% 'change-nothing)))
+        (send delta set-delta-foreground (make-object color% 0 0 174 1.0))
+        delta))
+
     (define idris-semantic-data-highlight-style
-      (send my-style-list new-named-style
-            "Idris semantic data highlight" idris-semantic-highlight-style))
+      (let ((delta (make-object style-delta% 'change-nothing)))
+        (send delta set-delta-foreground (make-object color% 200 0 0 1.0))
+        delta))
+
     (define idris-semantic-bound-highlight-style
-      (send my-style-list new-named-style
-            "Idris semantic bound variable highlight" idris-semantic-highlight-style))
+      (let ((delta (make-object style-delta% 'change-nothing)))
+        (send delta set-delta-foreground (make-object color% 200 0 200 1.0))
+        delta))
+
     (define idris-keyword-highlight-style
-      (send my-style-list new-named-style
-            "Idris keyword" idris-semantic-highlight-style))
+      (make-object style-delta% 'change-bold))
 
-    (send idris-semantic-function-highlight-style set-delta
-          (let ((delta (make-object style-delta% 'change-nothing)))
-            (send delta set-delta-foreground (make-object color% 0 128 0 1.0))
-            delta))
-
-    (send idris-semantic-type-highlight-style set-delta
-          (let ((delta (make-object style-delta% 'change-nothing)))
-            (send delta set-delta-foreground (make-object color% 0 0 174 1.0))
-            delta))
-
-    (send idris-semantic-data-highlight-style set-delta
-          (let ((delta (make-object style-delta% 'change-nothing)))
-            (send delta set-delta-foreground (make-object color% 200 0 0 1.0))
-            delta))
-
-    (send idris-semantic-bound-highlight-style set-delta
-          (let ((delta (make-object style-delta% 'change-nothing)))
-            (send delta set-delta-foreground (make-object color% 200 0 200 1.0))
-            delta))
-
-    (send idris-keyword-highlight-style set-delta
-          (make-object style-delta% 'change-bold))
+    (define idris-hole-highlight-style
+      (make-object style-delta% 'change-italic))
 
     ;; Map an Idris decor keyword to a style
     (define/public (get-idris-decor-style tag)
@@ -90,6 +84,7 @@
         [':data     idris-semantic-data-highlight-style]
         [':bound    idris-semantic-bound-highlight-style]
         [':keyword  idris-keyword-highlight-style]
+        [':metavar  idris-hole-highlight-style]
         [other      #f]))
 
     ;;; Highlight a region
@@ -104,18 +99,31 @@
           (when style
             (change-style style start end #f)))))
 
+    (define/public (remove-highlighting)
+      (change-style (let ([δ (make-object style-delta%)])
+                      (send* δ
+                        (set-delta 'change-normal-color)
+                        (set-delta 'change-weight 'normal)
+                        (set-delta 'change-style 'normal))
+                      δ)
+                    0
+                    (last-position))
+      (set! highlights (make-interval-map)))
+
     (define/augment (on-insert start len)
       (interval-map-expand! highlights start (+ start len)))
     (define/augment (on-delete start len)
       (interval-map-contract! highlights start (+ start len)))
+
+    (define/public (tag-at-position position)
+      (interval-map-ref highlights position #f))
 
     (define/override (on-default-event mouse-event)
       (if (equal? (send mouse-event get-event-type)
                   'right-down)
           (let* ([x (send mouse-event get-x)]
                  [y (send mouse-event get-y)]
-                 [click-position (find-position x y)]
-                 [maybe-tag (interval-map-ref highlights click-position #f)])
+                 [maybe-tag (tag-at-position (find-position x y))])
             (when (and tag-menu-callback maybe-tag)
               (let ([menu (tag-menu-callback maybe-tag)]
                     [canvas (get-active-canvas)])

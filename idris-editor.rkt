@@ -141,7 +141,10 @@
                                (send repl-editor output str)]
                               [(list ':highlight-source hls)
                                (highlight-code hls)]
-                              [other void]))
+                              [other (message-box "Idris output"
+                                                  (format "~a" other)
+                                                  this
+                                                  '(ok caution))]))
                           #:on-error
                           (lambda (msg [highlighting empty])
                             (message-box "Idris error"

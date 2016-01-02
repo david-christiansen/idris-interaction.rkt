@@ -8,7 +8,7 @@
    stdin stdout stderr
    ide-input ide-output
    [ide-output-buffer #:auto #:mutable])
-  #:auto-value #"")
+  #:auto-value "")
 
 
 (define (start-idris [debug #f])
@@ -28,7 +28,7 @@
           "idris"))
   
   (let-values (((proc out in err)
-                (subprocess #f #f #f (find-executable-path idris-executable) "--ide-mode-socket")))
+                (subprocess #f #f #f (find-executable-path idris-executable) "--ide-mode-socket" "-p" "pruviloj"))); TODO configurable packages
 
     (unless (equal? (subprocess-status proc) 'running)
       (close-ports in out err)
@@ -58,7 +58,9 @@
     (let get-all-bytes ()
       (let* ((buffer (idris-compiler-ide-output-buffer idris))
              (temp-buffer (make-bytes 256 0))
-             (read-count (read-bytes-avail!* temp-buffer ide-out)))
+             (read-count
+              (with-handlers ([exn:fail? (thunk* (displayln "No connection!") eof)])
+                (read-bytes-avail!* temp-buffer ide-out))))
         (cond ((eof-object? read-count)
                ;; We hit the EOF, no more to read
                void)
@@ -70,26 +72,35 @@
                (when (> read-count 0)
                  (set-idris-compiler-ide-output-buffer!
                   idris
-                  (bytes-append buffer
-                                (subbytes temp-buffer 0 read-count)))
+                  (string-append buffer
+                                 (bytes->string/utf-8
+                                  (subbytes temp-buffer
+                                            0
+                                            read-count)
+                                  #f)))
                  (get-all-bytes))))))))
 
 (define (idris-receive idris)
   (idris-get-output! idris)
 
   (let* ((output-buffer (idris-compiler-ide-output-buffer idris))
-         (message-length (if (>= (bytes-length output-buffer) 6)
-                             (string->number (bytes->string/utf-8 output-buffer #f 0 6)
+         (message-length (if (>= (string-length output-buffer) 6)
+                             (string->number (substring output-buffer 0 6)
                                              16)
                              #f))
          (has-message? (and message-length
-                            (>= (bytes-length output-buffer) (+ message-length 6)))))
+                            (>= (string-length output-buffer)
+                                (+ message-length 6)))))
     (if has-message?
-        (let* ((message-string (bytes->string/utf-8 output-buffer #f 6 (+ 6 message-length)))
-               (message-sexp (read (open-input-string message-string 'idris-message))))
-          (set-idris-compiler-ide-output-buffer! idris
-                                                 (subbytes output-buffer
-                                                           (+ 6 message-length)))
+        (let* ((message-string
+                (substring output-buffer 6 (+ 6 message-length)))
+               (message-sexp
+                (read (open-input-string message-string
+                                         'idris-message))))
+          (set-idris-compiler-ide-output-buffer!
+           idris
+           (substring output-buffer
+                      (+ 6 message-length)))
           message-sexp)
         #f)))
 
@@ -143,7 +154,7 @@
 
      (define (update)
        (let ([reply (idris-receive idris)])
-         ;(when reply (displayln (format "Receiving ~a" reply)))
+         #;(when reply (displayln (format "Receiving ~a" reply)))
          (match reply
              [(list ':return (list-rest ':ok msg highlights) request-id)
               (call-handler (hash-ref success-continuations request-id #f) msg highlights)

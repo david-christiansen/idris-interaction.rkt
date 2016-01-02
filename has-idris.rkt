@@ -5,6 +5,7 @@
 (define has-idris<%>
   (interface ()
     [start-my-idris (->m void?)]
+    [quit-my-idris (->m void?)]
     [get-idris-working-directory (->m (or/c #f path?))]
     [set-idris-working-directory (->m path? void?)]
     [idris-send (->*m (any/c)
@@ -22,6 +23,11 @@
     (define/public (start-my-idris)
       (unless my-idris-thread
         (set! my-idris-thread (idris-thread))))
+
+    (define/public (quit-my-idris)
+      (when my-idris-thread
+        (thread-send my-idris-thread 'quit)
+        (set! my-idris-thread #f)))
 
 
     (define/public (idris-send ide-message

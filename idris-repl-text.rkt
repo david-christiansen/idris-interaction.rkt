@@ -11,6 +11,7 @@
   (parameterize ((current-eventspace idris-eventspace))
     (queue-callback proc #t)))
 
+
 ;; This code uses Racket Esq. in the Typed Racket testsuite for
 ;; inspiration, but departs in a few ways. Eventually it will also
 ;; support snips that represent the Idris notion of semantic
@@ -24,29 +25,37 @@
           [tag-menu-callback #f])
 
     (inherit insert last-position get-text get-style-list change-style set-position
-             get-idris-decor-style add-idris-highlight)
+             get-idris-decor-style add-idris-highlight set-styles-sticky)
 
     (super-new [line-spacing line-spacing]
                [tab-stops tab-stops]
                [auto-wrap auto-wrap]
                [tag-menu-callback tag-menu-callback])
 
+    #;(repl-set-style this "PragmataPro" 400)
+
     (define my-style-list (get-style-list))
 
     (define idris-input-style
-      (send my-style-list new-named-style
-            "Idris REPL input" (send my-style-list basic-style)))
-
-    (send idris-input-style set-delta
-          (make-object style-delta% 'change-normal))
-
+      (let ([δ (make-object style-delta%)])
+        (send* δ
+          (set-delta 'change-normal-color)
+          (set-delta 'change-weight 'normal)
+          (set-delta 'change-style 'normal))
+        δ)
+      #;
+      (send my-style-list find-or-create-style
+            (send my-style-list find-named-style "Standard")
+            (make-object style-delta%)))
 
     (define idris-prompt-style
-      (send my-style-list new-named-style
-            "Idris prompt" (send my-style-list basic-style)))
-
-    (send idris-prompt-style set-delta
-          (make-object style-delta% 'change-bold))
+      (let ([δ (make-object style-delta% 'change-bold)])
+        (send δ set-delta-foreground (make-object color% 0 0 0 1.0))
+        δ)
+      #;
+      (send my-style-list find-or-create-style
+            (send my-style-list find-named-style "Standard")
+            (make-object style-delta% 'change-bold)))
 
     (define previous-input-beginning-position 0)
     (define input-beginning-position 0)

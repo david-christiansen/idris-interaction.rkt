@@ -1,6 +1,6 @@
 #lang racket
 (require "idris-interaction.rkt")
-(provide has-idris<%> has-idris-mixin)
+(provide has-idris<%> idris-handle% has-idris-mixin)
 
 (define has-idris<%>
   (interface ()
@@ -47,4 +47,6 @@
                   (lambda args
                     (set! idris-working-directory new-wd))))))
 
+(define idris-handle%
+  (has-idris-mixin object%))
 

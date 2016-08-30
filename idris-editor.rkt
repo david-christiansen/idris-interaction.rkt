@@ -1,9 +1,11 @@
 #lang racket
 (require "has-idris.rkt")
+(require "idris-editor-commands.rkt")
 (require "idris-tag.rkt")
 (require "idris-tag-details.rkt")
 (require "idris-repl-text.rkt")
 (require "idris-highlighting-text.rkt")
+(require "idris-token-editor.rkt")
 (require racket/gui)
 (require framework)
 
@@ -82,9 +84,11 @@
            [label "Start Idris"]
            [callback (lambda (x y)
                        (start-my-idris)
-                       (send start-idris enable #f)
-                       (send run enable #t)
-                       (send repl-editor insert-prompt))]))
+                       (queue-callback
+                        (thunk
+                         (send start-idris enable #f)
+                         (send run enable #t)
+                         (send repl-editor insert-prompt))))]))
 
     (define (highlight-code highlights)
       (for ([hl highlights])
@@ -138,6 +142,7 @@
                               [(list ':set-prompt str _)
                                (send repl-editor set-prompt str)]
                               [(list ':write-string str _)
+                               (send repl-editor output "\n")
                                (send repl-editor output str)]
                               [(list ':highlight-source hls)
                                (highlight-code hls)]
@@ -176,7 +181,17 @@
       (new panel:horizontal-dragable%
            [parent vertical]))
     (define code-editor
-      (new idris-highlighting-text% [tag-menu-callback tag-popup]))
+      (new (idris-token-editor-mixin idris-highlighting-text%) [tag-menu-callback tag-popup]))
+    (add-idris-keys code-editor this
+                    #:on-success (lambda (res [hl '()])
+                                   (send repl-editor output "\n")
+                                   (send repl-editor output res hl)
+                                   (send repl-editor insert-prompt))
+                    #:on-error (lambda (res [hl '()])
+                                 (send repl-editor output "\n")
+                                 (send repl-editor output res hl)
+                                 (send repl-editor insert-prompt)))
+
     (define repl-editor
       (new idris-repl-text%
            [tag-menu-callback tag-popup]

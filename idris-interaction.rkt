@@ -37,7 +37,7 @@
            (port (string->number str)))
       (unless port
         (close-ports in out err)
-        (subprocess-kill proc)
+        (subprocess-kill proc #t)
         (error "failed to connect, string was " str))
       (when debug (printf "Connecting to ~a\n" port))
       (let-values (((ide-out ide-in)

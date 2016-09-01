@@ -5,13 +5,14 @@
 (require "idris-tag.rkt")
 (require "idris-token-editor.rkt")
 (require "has-idris.rkt")
+(require "idris-editor-commands.rkt")
 
 (require racket/gui)
 (require framework)
 (require slideshow)
 
 
-(provide idris-slideshow-repl idris-slideshow-editor)
+(provide idris-slideshow-repl idris-slideshow-editor idris-slideshow-commands)
 
 (define (repl-get-style-delta face size-in-pixels)
   (let ([δ (make-object style-delta%)])
@@ -143,10 +144,6 @@
                                size-in-screen-pixels
                                auto-load?)
   (define preamble-lines (+ 1 (line-count preamble)))
-  (define (idris-line->editor-line line)
-    (- line preamble-lines 1))
-  (define (editor-line->idris-line line)
-    (+ line preamble-lines 1))
 
   (lambda (frame)
     (define my-idris (new idris-handle%))
@@ -160,7 +157,12 @@
       (new panel:vertical-dragable%
            [parent outer-container]))
     (define code-editor
-      (new (idris-token-editor-mixin idris-highlighting-text%)))
+      (new (class (idris-token-editor-mixin idris-highlighting-text%)
+             (super-new)
+             (define/override (idris-line->editor-line line)
+               (- line preamble-lines 1))
+             (define/override (editor-line->idris-line line)
+               (+ line preamble-lines 1)))))
 
     (define (repl-callback cmd)
       (send my-idris idris-send `(:interpret ,cmd)
@@ -256,10 +258,10 @@
                       (display-output-details (idris-error-text error)
                                               (idris-error-highlighting error))
                       (send code-editor set-position
-                            (+ (idris-line->editor-line
+                            (+ (send code-editor idris-line->editor-line
                                 (idris-error-start-line error))
                                (idris-error-start-column error))
-                            (+ (idris-line->editor-line
+                            (+ (send code-editor idris-line->editor-line
                                 (idris-error-end-line error))
                                (idris-error-end-column error))))))))]))
 
@@ -277,79 +279,6 @@
         (change-children
          (const (list output-details-canvas)))))
 
-    (define (idris-info-command cmd)
-      (send my-idris idris-send cmd
-            #:on-success display-output-details
-            #:on-error display-output-details))
-
-    (define (editor-point)
-      (let ([pos-start (box 0)]
-            [pos-end (box 0)])
-        (send code-editor get-position pos-start pos-end)
-        (if (= (unbox pos-start) (unbox pos-end))
-            (unbox pos-start)
-            #f)))
-
-    (define (idris-name-command cmd-name)
-      (thunk*
-       (let ([point (editor-point)])
-         (when point
-           (let ([tag (send code-editor tag-at-position point)])
-             (when tag
-               (idris-info-command `(,cmd-name ,(idris-tag-full-name tag)))))))))
-
-    (define (idris-editing-command cmd-name insert-or-replace . extra)
-      (thunk*
-       (let ([point (editor-point)])
-         (when point
-           (let* ([editor-line (send code-editor position-line point)]
-                  [line-num (editor-line->idris-line editor-line)]
-                  [name-at-point (send code-editor idris-token-at-position point)])
-             (when name-at-point
-               (send my-idris idris-send
-                     `(,cmd-name ,line-num ,name-at-point ,@extra)
-                     #:on-success
-                     (λ (code [hightlights empty])
-                       (match insert-or-replace
-                         ['insert (send code-editor insert
-                                        (string-append "\n" code)
-                                        (send code-editor line-end-position editor-line))]
-                         ['replace (let ([line-beginning (if (= editor-line 0)
-                                                             0
-                                                             (send code-editor line-end-position (- editor-line 1)))]
-                                         [line-end (send code-editor line-end-position editor-line)])
-                                     (send code-editor insert
-                                           (string-append "\n" code) line-beginning line-end))]
-                         ['replace-hole (let ([hole-beginning (send code-editor find-string "?" 'backward point 'eof #f)]
-                                              [hole-end (let loop ([looking-at point])
-                                                          (if (let ([ch (send code-editor get-character looking-at)])
-                                                                (or (char-alphabetic? ch)
-                                                                    (char-numeric? ch)
-                                                                    (char=? ch #\_)))
-                                                              (loop (+ looking-at 1))
-                                                              looking-at))])
-                                          (send code-editor insert code hole-beginning hole-end))])
-                       (when auto-load? (load-editor)))
-                     #:on-error (λ args (displayln (format "oops ~a" args))))))))))
-
-    (define (add-idris-keys editor)
-      (let ([keymap (send editor get-keymap)])
-        (send* keymap
-          ;; info commands
-          (add-function "Get docs" (idris-name-command ':docs-for))
-          (map-function "c:c;c:d" "Get docs")
-          (add-function "Get type" (idris-name-command ':type-of))
-          (map-function "c:c;c:t" "Get type")
-          ;; editing commands
-          (add-function "Load into Idris" (thunk* (load-editor)))
-          (map-function "c:c;c:l" "Load into Idris")
-          (add-function "Start definition" (idris-editing-command ':add-clause 'insert))
-          (map-function "c:c;c:s" "Start definition")
-          (add-function "Case split" (idris-editing-command ':case-split 'replace))
-          (map-function "c:c;c:c" "Case split")
-          (add-function "Proof search" (idris-editing-command ':proof-search 'replace-hole empty))
-          (map-function "c:c;c:a" "Proof search"))
-        (send editor set-keymap keymap)))
 
     (define (highlight-code editor-file-name highlights)
       (for ([hl highlights])
@@ -363,11 +292,11 @@
                        (> s-line preamble-lines))
            (let* ([start-line-start-pos
                    (send code-editor line-start-position
-                         (idris-line->editor-line s-line))]
+                         (send code-editor idris-line->editor-line s-line))]
                   [start-pos (+ start-line-start-pos s-col -1)]
                   [end-line-start-pos
                    (send code-editor line-start-position
-                         (idris-line->editor-line e-line))]
+                         (send code-editor idris-line->editor-line e-line))]
                   [end-pos (+ end-line-start-pos e-col -1)])
              ;; filter more garbage
              (when (< start-pos end-pos)
@@ -380,9 +309,9 @@
 
     (define (report-error an-error)
       (match-let ([(idris-error file
-                                (app idris-line->editor-line start-line)
+                                (app (lambda (l) (send code-editor idris-line->editor-line l)) start-line)
                                 start-col
-                                (app idris-line->editor-line end-line)
+                                (app (lambda (l) (send code-editor idris-line->editor-line l)) end-line)
                                 end-col
                                 text
                                 highlights)
@@ -462,7 +391,9 @@
     (send my-idris idris-send '(:interpret ":consolewidth 50"))
     (repl-set-style code-editor face size-in-screen-pixels)
     (repl-set-style output-details face size-in-screen-pixels)
-    (add-idris-keys code-editor)
+    (add-idris-keys code-editor my-idris
+                    #:on-success display-output-details
+                    #:on-error display-output-details)
     (when repl?
       (send repl set-prompt "λΠ")
       (repl-set-style repl face size-in-screen-pixels))
@@ -474,6 +405,91 @@
       (send my-idris quit-my-idris)
       (displayln "closing editor, killed idris"))))
 
+(define (idris-slideshow-commands
+         commands
+         #:width [width 800]
+         #:height [height 600]
+         #:face [face #f]
+         #:size [size-in-slideshow-px 40]
+         #:fallback-pict [fallback (text "Idris commands")]
+         #:preamble [preamble #f])
+  (let* ([pict-area (dc (lambda (x y z) '()) width height)]
+         [contents (cc-superimpose pict-area fallback)])
+    (let-values ([(w h) (get-display-size)])
+      (define (commands-in-frame frame)
+        (define size-in-screen-px
+          (floor (* size-in-slideshow-px
+                    (/ h 768))))
+        (define my-idris (new idris-handle%))
+        (send my-idris start-my-idris)
+        (define split (new vertical-panel% [parent frame]))
+        (define buttons (new horizontal-panel%
+                             [parent split]
+                             [stretchable-height #f]))
+        (define repl (new idris-repl-text% [eval-callback (thunk* (void))]))
+        (repl-set-style repl face size-in-screen-px)
+
+        (define repl-area (new editor-canvas% [parent split] [editor repl]))
+
+        (let ([file (temp-idris-file preamble)])
+          (displayln (format "Saving command window preamble to ~a" file))
+          (let-values ([(base name must-be-dir)
+                        (split-path file)])
+            (send my-idris set-idris-working-directory base)
+            (send my-idris idris-send
+                  `(:load-file ,(path->string file))
+                  #:on-success
+                  (thunk*
+                   (send my-idris idris-send
+                         '(:interpret ":consolewidth 50")))
+                  #:on-output
+                  (lambda (msg [highlighting empty])
+                    (match msg
+                      [(list ':set-prompt str _)
+                       ;; Here we ignore Idris's requests for a prompt
+                       ;; because they're too long
+                       #;(send repl set-prompt str)
+                       (void)]
+                      [(list ':write-string str _)
+                       (displayln str)]
+                      [(list ':highlight-source hls)
+                       (void)]
+                      [(list ':warning
+                             (list filename
+                                   (list start-line start-col)
+                                   (list end-line end-col)
+                                   text
+                                   highlights)
+                             _)
+                       (send repl erase)
+                       (send repl output text highlights)]
+                      [other (displayln (format "Other: ~a" other))
+                             #;
+                             (message-box "Idris output"
+                                          (format "~a" other)
+                                          frame
+                                          '(ok caution))]))
+                  #:on-error
+                  (lambda (msg [highlighting empty])
+                    (send repl output msg highlighting)))))
+
+        (for ([c commands])
+          (match-define (list text repl-cmd) c)
+          (new button%
+               [parent buttons]
+               [label text]
+               [callback (thunk* (send my-idris idris-send `(:interpret ,repl-cmd)
+                                       #:on-success (lambda (res [hl '()])
+                                                      (send repl erase)
+                                                      (send repl output res hl))
+                                       #:on-output  (lambda (str [hl '()])
+                                                      (displayln str))
+                                       #:on-error   (lambda (res [hl '()])
+                                                      (send repl clear)
+                                                      (send repl output res))))]))
+        (thunk*
+         (send my-idris quit-my-idris)))
+      (interactive contents commands-in-frame))))
 
 (define (idris-slideshow-repl #:width [width 800]
                               #:height [height 600]
@@ -499,7 +515,7 @@
                                 #:face [face #f]
                                 #:size [size-in-slideshow-px 40]
                                 #:fallback-pict [fallback (text "Idris editor")])
-  (let* ([pict-area (dc (lambda (x y z) '()) width height)]
+  (let* ([pict-area (frame (blank width height))]
          [contents (cc-superimpose pict-area fallback)])
     (let-values ([(w h) (get-display-size)])
       (interactive contents

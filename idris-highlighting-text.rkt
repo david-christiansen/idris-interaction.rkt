@@ -4,7 +4,7 @@
 (require data/interval-map)
 (require "idris-tag.rkt")
 
-(provide idris-highlighting-text%)
+(provide idris-highlighting-text% idris-highlighting-editor<%>)
 
 (define idris-basic-style-delta
   (make-parameter
@@ -14,6 +14,10 @@
 
 (define idris-highlighting-editor<%>
   (interface ()
+    ;; Allow for hidden lines
+    [idris-line->editor-line (->m exact-nonnegative-integer? exact-nonnegative-integer?)]
+    [editor-line->idris-line (->m exact-nonnegative-integer? exact-nonnegative-integer?)]
+
     ;; Interpret a tag to get a style
     [get-idris-decor-style (->m idris-tag? (or/c #f (is-a?/c style<%>)))]
 
@@ -45,6 +49,8 @@
              get-style-list
              last-position)
 
+    (define/public (idris-line->editor-line line) (sub1 line))
+    (define/public (editor-line->idris-line line) (add1 line))
 
     (define my-style-list (get-style-list))
 

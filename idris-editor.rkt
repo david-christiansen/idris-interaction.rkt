@@ -128,6 +128,7 @@
                           (split-path editor-file-name)])
               (unless (equal? base (get-idris-working-directory))
                 (set-idris-working-directory base))
+              ;; TODO delete IBC
               (idris-send `(:load-file ,(path->string name))
                           #:on-success
                           (lambda (msg [highlighting empty])

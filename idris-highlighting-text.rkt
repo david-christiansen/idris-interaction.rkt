@@ -6,6 +6,10 @@
 
 (provide idris-highlighting-text%)
 
+(define idris-basic-style-delta
+  (make-parameter
+   (let ([δ (make-object style-delta%)])
+     (send δ set-delta 'change-family 'modern))))
 
 
 (define idris-highlighting-editor<%>
@@ -45,14 +49,16 @@
     (define my-style-list (get-style-list))
 
     (define basic-style (send my-style-list basic-style))
-    (send basic-style set-delta
-          (make-object style-delta% 'change-family 'swiss))
-    (send my-style-list replace-named-style "Standard" basic-style)
+    (let ([new-basic-style
+           (send my-style-list find-or-create-style
+                 basic-style
+                 (idris-basic-style-delta))])
+      (send my-style-list replace-named-style "Standard" basic-style))
 
 
     (define idris-semantic-function-highlight-style
       (let ((delta (make-object style-delta% 'change-nothing)))
-        (send delta set-delta-foreground (make-object color% 0 128 0 1.0))
+        (send delta set-delta-foreground (make-object color% 31 122 122 1.0))
         delta))
 
     (define idris-semantic-type-highlight-style

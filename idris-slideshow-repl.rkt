@@ -15,7 +15,7 @@
 
 (define (repl-get-style-delta face size-in-pixels)
   (let ([δ (make-object style-delta%)])
-    (send δ set-delta 'change-family 'swiss)
+    (send δ set-delta 'change-family 'modern)
     (send δ set-face face)
     (send δ set-delta 'change-size-in-pixels #t)
     (send δ set-delta 'change-size size-in-pixels)

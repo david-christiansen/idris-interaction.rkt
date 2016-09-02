@@ -1,7 +1,7 @@
 #lang racket
 
 (require racket/gui)
-(provide idris-thread)
+(provide idris-thread idris-load-packages idris-flags)
 
 (struct idris-compiler
   (process
@@ -10,6 +10,8 @@
    [ide-output-buffer #:auto #:mutable])
   #:auto-value "")
 
+(define idris-load-packages (make-parameter (list "pruviloj")))
+(define idris-flags (make-parameter (list)))
 
 (define (start-idris [debug #f])
   (define (close-ports . ports)
@@ -24,11 +26,14 @@
 
   (define idris-executable
     (if (eq? (system-type 'os) 'windows)
-          "idris.exe"
-          "idris"))
-  
+        "idris.exe"
+        "idris"))
+
   (let-values (((proc out in err)
-                (subprocess #f #f #f (find-executable-path idris-executable) "--ide-mode-socket" "-p" "pruviloj"))); TODO configurable packages
+                (apply subprocess #f #f #f (find-executable-path idris-executable) "--ide-mode-socket"
+                       (append (idris-flags)
+                               (flatten (for/list ([p (idris-load-packages)])
+                                          (list "-p" p)))))))
 
     (unless (equal? (subprocess-status proc) 'running)
       (close-ports in out err)

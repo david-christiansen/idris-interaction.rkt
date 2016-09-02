@@ -103,8 +103,7 @@
                                    text
                                    highlights)
                              _)
-                       (displayln (string-append "Error from REPL preamble: " text))
-                       ]
+                       (displayln (string-append "Error from REPL preamble: " text))]
                       [other (void)]))
                   #:on-error
                   (lambda (msg [highlighting empty])
@@ -259,10 +258,10 @@
                                               (idris-error-highlighting error))
                       (send code-editor set-position
                             (+ (send code-editor idris-line->editor-line
-                                (idris-error-start-line error))
+                                     (idris-error-start-line error))
                                (idris-error-start-column error))
                             (+ (send code-editor idris-line->editor-line
-                                (idris-error-end-line error))
+                                     (idris-error-end-line error))
                                (idris-error-end-column error))))))))]))
 
     (define output-details
@@ -308,6 +307,7 @@
           [other void])))
 
     (define (report-error an-error)
+      (displayln `(error ,an-error))
       (match-let ([(idris-error file
                                 (app (lambda (l) (send code-editor idris-line->editor-line l)) start-line)
                                 start-col
@@ -327,7 +327,12 @@
                             (+ 1 end-line) end-col))]
                [summary (first-line text)])
           (send error-list append error-pos-string an-error)
-          (send error-list set-string (- (send error-list get-number) 1) summary 1))))
+          (send error-list set-string
+                (- (send error-list get-number) 1)
+                (if (< (string-length summary) 200)
+                    summary
+                    (substring summary 0 199))
+                1))))
 
     (define (load-editor)
       (send code-editor remove-highlighting)
@@ -399,6 +404,7 @@
       (repl-set-style repl face size-in-screen-pixels))
     (send code-editor set-styles-sticky #f)
     (send code-editor insert code)
+    (send code-editor scroll-to-position 0)
     (when auto-load?
       (load-editor))
     (lambda ()
@@ -481,7 +487,9 @@
                [callback (thunk* (send my-idris idris-send `(:interpret ,repl-cmd)
                                        #:on-success (lambda (res [hl '()])
                                                       (send repl erase)
-                                                      (send repl output res hl))
+                                                      (send repl output res hl)
+                                                      (send repl scroll-to-position 0)
+                                                      (void))
                                        #:on-output  (lambda (str [hl '()])
                                                       (displayln str))
                                        #:on-error   (lambda (res [hl '()])

@@ -109,17 +109,21 @@
         (interval-map-set! highlights start end tag)
         (let ([style (get-idris-decor-style tag)])
           (when style
-            (change-style style start end #f)))))
+            (queue-callback
+             (thunk
+              (change-style style start end #f)))))))
 
     (define/public (remove-highlighting)
-      (change-style (let ([δ (make-object style-delta%)])
-                      (send* δ
-                        (set-delta 'change-normal-color)
-                        (set-delta 'change-weight 'normal)
-                        (set-delta 'change-style 'normal))
-                      δ)
-                    0
-                    (last-position))
+      (queue-callback
+       (thunk
+        (change-style (let ([δ (make-object style-delta%)])
+                        (send* δ
+                          (set-delta 'change-normal-color)
+                          (set-delta 'change-weight 'normal)
+                          (set-delta 'change-style 'normal))
+                        δ)
+                      0
+                      (last-position))))
       (set! highlights (make-interval-map)))
 
     (define/augment (on-insert start len)

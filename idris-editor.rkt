@@ -183,7 +183,7 @@
            [parent vertical]))
     (define code-editor
       (new (idris-token-editor-mixin idris-highlighting-text%) [tag-menu-callback tag-popup]))
-    (add-idris-keys code-editor this
+    (add-idris-keys code-editor this run-in-idris
                     #:on-success (lambda (res [hl '()])
                                    (send repl-editor output "\n")
                                    (send repl-editor output res hl)
@@ -191,7 +191,8 @@
                     #:on-error (lambda (res [hl '()])
                                  (send repl-editor output "\n")
                                  (send repl-editor output res hl)
-                                 (send repl-editor insert-prompt)))
+                                 (send repl-editor insert-prompt))
+                    #:auto-load #f)
 
     (define repl-editor
       (new idris-repl-text%

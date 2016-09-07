@@ -109,15 +109,17 @@
     (define menu (new menu% [label menu-label] [parent parent]))
     void?))
 
-(define/contract (add-idris-keys editor connection #:on-success succeed #:on-error fail)
+(define/contract (add-idris-keys editor connection load-thunk #:on-success succeed #:on-error fail #:auto-load? auto-load?)
   (-> (is-a?/c idris-highlighting-editor<%>)
       (is-a?/c has-idris<%>)
+      (-> void?)
       #:on-success (->* (string?)
                         ((listof (list/c exact-nonnegative-integer? exact-nonnegative-integer? any/c)))
                         any/c)
       #:on-error (->* (string?)
                       ((listof (list/c exact-nonnegative-integer? exact-nonnegative-integer? any/c)))
                       any/c)
+      #:auto-load? any/c
       void?)
   (let ([keymap (send editor get-keymap)])
     (send* keymap
@@ -129,12 +131,18 @@
                                                    ':type-of #:on-success succeed #:on-error fail))
       (map-function "c:c;c:t" "Get type")
       ;; editing commands
-      ;; (add-function "Load into Idris" (thunk* (load-editor)))
-      ;; (map-function "c:c;c:l" "Load into Idris")
-      (add-function "Start definition" (idris-editing-command editor '() connection ':add-clause 'insert))
+      (add-function "Load into Idris" (thunk* load-thunk))
+      (map-function "c:c;c:l" "Load into Idris")
+      (add-function "Start definition"
+                    (idris-editing-command editor (list load-thunk) connection
+                                           ':add-clause 'insert))
       (map-function "c:c;c:s" "Start definition")
-      (add-function "Case split" (idris-editing-command editor '() connection ':case-split 'replace))
+      (add-function "Case split"
+                    (idris-editing-command editor (list load-thunk) connection
+                                           ':case-split 'replace))
       (map-function "c:c;c:c" "Case split")
-      (add-function "Proof search" (idris-editing-command editor '() connection ':proof-search 'replace-hole empty))
+      (add-function "Proof search"
+                    (idris-editing-command editor (list load-thunk) connection
+                                           ':proof-search 'replace-hole empty))
       (map-function "c:c;c:a" "Proof search"))
     (send editor set-keymap keymap)))

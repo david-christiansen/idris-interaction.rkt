@@ -397,8 +397,10 @@
     (repl-set-style code-editor face size-in-screen-pixels)
     (repl-set-style output-details face size-in-screen-pixels)
     (add-idris-keys code-editor my-idris
+                    (thunk (load-editor))
                     #:on-success display-output-details
-                    #:on-error display-output-details)
+                    #:on-error display-output-details
+                    #:auto-load? #t)
     (when repl?
       (send repl set-prompt "λΠ")
       (repl-set-style repl face size-in-screen-pixels))

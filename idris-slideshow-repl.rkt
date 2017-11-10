@@ -6,7 +6,7 @@
 (require "idris-token-editor.rkt")
 (require "has-idris.rkt")
 (require "idris-editor-commands.rkt")
-
+(require "idris-error.rkt")
 (require racket/gui)
 (require framework)
 (require slideshow)
@@ -117,13 +117,7 @@
       (displayln "closing REPL, Idris stopped"))))
 
 
-(struct idris-error
-  (filename
-   start-line start-column
-   end-line end-column
-   text
-   highlighting)
-  #:transparent)
+
 
 
 (define (first-line str)

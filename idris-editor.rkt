@@ -6,9 +6,15 @@
 (require "idris-repl-text.rkt")
 (require "idris-highlighting-text.rkt")
 (require "idris-token-editor.rkt")
+(require "idris-error.rkt")
 (require racket/gui)
 (require framework)
 
+(define (first-line str)
+  (let ([lines (string-split str "\n")])
+    (if (cons? lines)
+        (car lines)
+        str)))
 
 (define idris-editor-frame%
   (class (has-idris-mixin frame%)
@@ -17,6 +23,8 @@
              set-label)
 
     (super-new [label "Idris editor"] [width 1000] [height 700])
+
+    (define inhibit-ask-save? (make-parameter #f))
 
     (define editor-file-name #f)
 
@@ -90,7 +98,8 @@
                          (send run enable #t)
                          (send repl-editor insert-prompt))))]))
 
-    (define (highlight-code highlights)
+
+    (define (highlight-code editor-file-name highlights)
       (for ([hl highlights])
         (match hl
           [(list (list-no-order (list ':filename filename)
@@ -98,20 +107,51 @@
                                 (list ':end e-line e-col))
                  (list-no-order (list ':decor decor) rest ...))
            ;; Filter out spurious highlights
-           #:when (string-suffix? (path->string editor-file-name) filename)
-           (let* ([start-line-start-pos (send code-editor line-start-position
-                                              (- s-line 1))]
+           #:when (string-suffix? editor-file-name filename)
+           (let* ([start-line-start-pos
+                   (send code-editor line-start-position
+                         (send code-editor idris-line->editor-line s-line))]
                   [start-pos (+ start-line-start-pos s-col -1)]
-                  [end-line-start-pos (send code-editor line-start-position
-                                            (- e-line 1))]
+                  [end-line-start-pos
+                   (send code-editor line-start-position
+                         (send code-editor idris-line->editor-line e-line))]
                   [end-pos (+ end-line-start-pos e-col -1)])
              ;; filter more garbage
              (when (< start-pos end-pos)
                (send code-editor add-idris-highlight
                      start-pos end-pos
-                     (idris-tag-from-protocol (cons (list ':decor decor) rest)))))]
+                     (idris-tag-from-protocol
+                      (cons (list ':decor decor)
+                            rest)))))]
           [other void])))
 
+
+    (define (report-error an-error)
+      (match-let ([(idris-error file
+                                (app (lambda (l) (send code-editor idris-line->editor-line l)) start-line)
+                                start-col
+                                (app (lambda (l) (send code-editor idris-line->editor-line l)) end-line)
+                                end-col
+                                text
+                                highlights)
+                   an-error])
+        (let* ([error-pos-string
+                (if (and (= start-line end-line)
+                         (= start-col end-col))
+                    ;; point error
+                    (format "~a:~a" (+ 1 start-line) start-col)
+                    ;; span error
+                    (format "~a:~a–~a:~a"
+                            (+ 1 start-line) start-col
+                            (+ 1 end-line) end-col))]
+               [summary (first-line text)])
+          (send error-list append error-pos-string an-error)
+          (send error-list set-string
+                (- (send error-list get-number) 1)
+                (if (< (string-length summary) 200)
+                    summary
+                    (substring summary 0 199))
+                1))))
 
     (define (run-in-idris)
       (if (not editor-file-name)
@@ -121,18 +161,23 @@
                        '(ok caution))
           (begin
             (when (send code-editor is-modified?)
-              (when (equal?
-                     (message-box "Unsaved code"
-                                  "Idris will see the last saved version of your code.\n\nSave before running?"
-                                  this
-                                  '(yes-no))
-                     'yes)
+              (when (or (inhibit-ask-save?)
+                        (equal?
+                         (message-box "Unsaved code"
+                                      "Idris will see the last saved version of your code.\n\nSave before running?"
+                                      this
+                                      '(yes-no))
+                         'yes))
                 (save-file)))
             (let-values ([(base name must-be-dir)
                           (split-path editor-file-name)])
               (unless (equal? base (get-idris-working-directory))
                 (set-idris-working-directory base))
-              ;; TODO delete IBC
+              ;; We need to delete the IBC name to make Idris retypecheck, which gets
+              ;; highlighting for freshly opened files.
+              (let ([ibc-name (path-replace-extension editor-file-name ".ibc")])
+                (when (file-exists? ibc-name)
+                  (delete-file ibc-name)))
               (idris-send `(:load-file ,(path->string name))
                           #:on-success
                           (lambda (msg [highlighting empty])
@@ -141,22 +186,34 @@
                           (lambda (msg [highlighting empty])
                             (match msg
                               [(list ':set-prompt str _)
-                               (send repl-editor set-prompt str)]
+                               ;; Here we ignore Idris's requests for a prompt
+                               ;; because they're too long
+                               #;(send repl set-prompt str)
+                               (void)]
                               [(list ':write-string str _)
-                               (send repl-editor output "\n")
                                (send repl-editor output str)]
                               [(list ':highlight-source hls)
-                               (highlight-code hls)]
-                              [other (message-box "Idris output"
+                               (highlight-code (path->string name) hls)]
+                              [(list ':warning
+                                     (list filename
+                                           (list start-line start-col)
+                                           (list end-line end-col)
+                                           text
+                                           highlights)
+                                     _)
+                               (report-error
+                                (idris-error filename
+                                             start-line start-col
+                                             end-line end-col
+                                             text highlights))]
+                              [other (displayln (format "Other: ~a" other))
+                                     #;
+                                     (message-box "Idris output"
                                                   (format "~a" other)
-                                                  this
+                                                  frame
                                                   '(ok caution))]))
                           #:on-error
-                          (lambda (msg [highlighting empty])
-                            (message-box "Idris error"
-                                         (format "~a" msg)
-                                         this
-                                         '(ok caution))))))))
+                          display-output-details)))))
 
     (define run
       (new button%
@@ -183,7 +240,8 @@
            [parent vertical]))
     (define code-editor
       (new (idris-token-editor-mixin idris-highlighting-text%) [tag-menu-callback tag-popup]))
-    (add-idris-keys code-editor this run-in-idris
+    (define text-editor-canvas (new editor-canvas% [parent horizontal] [editor code-editor]))
+    (add-idris-keys code-editor this (thunk (parameterize ([inhibit-ask-save? #t]) (run-in-idris)))
                     #:on-success (lambda (res [hl '()])
                                    (send repl-editor output "\n")
                                    (send repl-editor output res hl)
@@ -192,7 +250,83 @@
                                  (send repl-editor output "\n")
                                  (send repl-editor output res hl)
                                  (send repl-editor insert-prompt))
-                    #:auto-load #f)
+                    #:auto-load? #f)
+
+    (define right-panel (new vertical-panel% [parent horizontal]))
+
+    (define (feedback-holder-callback panel event)
+      (when (eqv? (send event get-event-type) 'tab-panel)
+        (send panel change-children
+              (lambda (_)
+                (match (send panel get-selection)
+                  [0 (list repl-editor-canvas)]
+                  [1 (list error-list)]
+                  [2 (list output-details-canvas)])))))
+
+    (define feedback-holder
+      (new tab-panel%
+           [parent right-panel]
+           [choices '("REPL" "Errors" "Details")]
+           [callback feedback-holder-callback]))
+
+    (define (clear-output-details)
+      (send* output-details
+        (remove-highlighting)
+        (do-edit-operation 'select-all)
+        (do-edit-operation 'clear)))
+
+    (define (display-output-details text [highlights empty])
+      (clear-output-details)
+      (send output-details insert text)
+      (for ([hl highlights])
+        (match hl
+          [(list offset len (app idris-tag-from-protocol
+                                 tag))
+           (when tag
+             (send output-details add-idris-highlight
+                   offset (+ offset len)
+                   tag))]))
+      (switch-to-details-tab))
+
+    (define error-list
+      (new list-box%
+           [label #f]
+           [parent feedback-holder]
+           [choices empty]
+           [columns '("Location" "Summary")]
+           [style (let ([style '(single column-headers)])
+                    (cons 'deleted style))]
+           [callback
+            (lambda (list-box event)
+              (when (equal? (send event get-event-type)
+                            'list-box-dclick)
+                (let ([selected-index (send list-box get-selections)])
+                  (when (cons? selected-index)
+                    (let ([error (send list-box get-data
+                                       (car selected-index))])
+                      (display-output-details (idris-error-text error)
+                                              (idris-error-highlighting error))
+                      (send code-editor set-position
+                            (+ (send code-editor idris-line->editor-line
+                                     (idris-error-start-line error))
+                               (idris-error-start-column error))
+                            (+ (send code-editor idris-line->editor-line
+                                     (idris-error-end-line error))
+                               (idris-error-end-column error))))))))]))
+
+    (define output-details
+      (new idris-highlighting-text%))
+    (define output-details-canvas
+      (new editor-canvas%
+           [parent feedback-holder]
+           [editor output-details]
+           [style '(deleted)]))
+
+    (define (switch-to-details-tab)
+      (send* feedback-holder
+        (set-selection 2)
+        (change-children
+         (const (list output-details-canvas)))))
 
     (define repl-editor
       (new idris-repl-text%
@@ -222,12 +356,13 @@
                             ;; should also give a prompt
                             (send repl-editor insert-prompt))))]))
 
-    (define text-editor-canvas (new editor-canvas% [parent horizontal] [editor code-editor]))
-    (define right-panel (new vertical-panel% [parent horizontal]))
-    (define repl-editor-canvas (new editor-canvas% [parent right-panel] [editor repl-editor]))
+    (define repl-editor-canvas (new editor-canvas% [parent feedback-holder] [editor repl-editor]))
     (define info-widget (new idris-tag-details-widget% [parent right-panel] [tag #f]))))
 
 (define (editor)
   (parameterize ([application:current-app-name "Idris Editor"])
     (define frame (new idris-editor-frame%))
     (send frame show #t)))
+
+(module+ main
+  (editor))

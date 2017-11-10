@@ -12,12 +12,11 @@ slide shows with compiler interaction.
  - Parsing and unparsing Idris messages
  - Demo REPL app, including semantic highlights
  - Demo editor app, including file editor and REPL
+ - Embedded Idris editors and REPLS in Slideshow
 
 ** Planned
  - Proper translation between Idris error results and Racket
    exceptions
- - Interaction with =slideshow=
- - Interactive editing features like those in =idris-mode=
 
 ** Not planned, but patches welcome
  - =#lang idris= in DrRacket

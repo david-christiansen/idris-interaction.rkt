@@ -17,6 +17,7 @@ slide shows with compiler interaction.
 ** Planned
  - Proper translation between Idris error results and Racket
    exceptions
+ - An organized, properly documented public API
 
 ** Not planned, but patches welcome
  - =#lang idris= in DrRacket
@@ -26,9 +27,15 @@ slide shows with compiler interaction.
 
 ** How to test
 First, if Idris isn't on your PATH, then edit the invocation of
-=subprocess= to point at its absolute path. Then, load up the file in
-=racket-mode= or DrRacket and evaluate =(repl)= to get a bare-bones
-graphical Idris REPL.
+=subprocess= to point at its absolute path.
+
+To launch the REPL, run =$ racket idris-repl.rkt=. To run the editor,
+run =$ racket idris-editor.rkt=.
+
+If you'd like to use this package for a talk, please refer to the
+contents of =example-slideshow.rkt= for a starting point to work with.
+Because it launches external processes, these slides should be run
+with =$ slideshow --trust example-slideshow.rkt=.
 
 
 [[idris-repl.png]]
